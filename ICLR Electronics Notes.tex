@@ -1,0 +1,188 @@
+\documentclass{article}
+\usepackage{graphicx} % Required for inserting images
+\usepackage[a4paper, left=2cm, right=2cm, top=3cm, bottom=3cm]{geometry}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{centernot}
+\allowdisplaybreaks
+
+\title{ICLR Electronics Notes}
+\author{Siheon Lee}
+\date{December 2025}
+
+\begin{document}
+
+\maketitle
+
+\section{Sensors (06/12/2025)}
+\begin{itemize}
+    \item Sensor fusion to estimate orientation/attitude/heading
+    \item Fusion algorithm can be referred to as attitude and heading reference system (AHRS)
+    \item To define an orientation, we need a reference frame and specify rotation
+    \item Represent 3D rotation between two coordinate frames
+    \begin{itemize}
+        \item Roll, pitch, yaw
+        \item Direction cosine matrix (DCM)
+        \item Quaternion
+    \end{itemize}
+    \item Magnetometer
+    \begin{itemize}
+        \item Points towards north but is 3D so returns 3D vector in direction of gravity
+        \item Affected by disturbances in the magnetic field
+        \begin{itemize}
+            \item If magnetic disturbance is part of system and rotates with magnetometer, it can be calibrated out
+            \item Hard iron source - generates own magnetic field (magnet, coil, etc.)
+            \begin{itemize}
+                \item If we rotate the system around a single axis and measure the magnetic field, we will find circle offset from origin
+                \item Magnetometer read larger intensity in one direction and smaller intensity in opposite direction
+            \end{itemize}
+            \item Soft iron source - something that doesn't generate its own magnetic field but bends magnetic field (iron nail, structural elements, etc.)
+            \begin{itemize}
+                \item Distort measurement as an oval
+            \end{itemize}
+        \end{itemize}
+        \item Magnetometer calibration
+        \begin{itemize}
+            \item Measuring across $4 \pi$ steradian directions, we would find perfect sphere in perfect system with radius being magnitude of sphere
+            \item By measuring the distortions, we can find a correction by $x_{corrected} = (x - b) \cdot A$ where $b$ is the hard iron bias ($3 \times 1$ vector) and $A$ is the soft iron distortion ($3 \times 3$ matrix)
+        \end{itemize}
+    \end{itemize}
+    \item Accelerometer
+    \begin{itemize}
+        \item Down is oppoosite direction of acceleration vector 
+        \item East is cross product of down and measured magnetic field
+        \item North is cross-product of east and down
+        \item Direction cosine matrix can be built from north, east, and down vectors
+        \item Accelerometer not centered at center of rotation will sense acceleration
+        \begin{itemize}
+            \item Predicting linear acceleration and removing it from measurement prior to using it
+            \item If acceleration is result of actuators, we can run it through a system model to get an estimated linear acceleration and subtract it from the accelerometer measurement
+            \item We can also ignore $\vert a - g \vert > t$ for some acceleration measurement $a$, gravity $g$, and threshold $t$
+        \end{itemize}
+    \end{itemize}
+    \item Gyroscope
+    \begin{itemize}
+        \item $a \cdot \Delta t = \Delta a$ where $a$ is measured angular rate, $\Delta t$ is sample time, and $\Delta a$ is change in angle
+        \item Add $\Delta a$ to previous orientation to get current orientation
+        \begin{itemize}
+            \item Dead reckoning and just is integrating gyro measurement
+            \item Downsides: need to known initial orientation and sensor biases
+            \item Integration acts as a low pass filter so that high frequency noise is smoothed out but result drifts away from true position due to random walk and integrating any biases
+        \end{itemize}
+    \end{itemize}
+    \item Inertial measurement unit often packages gyroscope and accelerometer
+    \item Sensor fusion
+    \begin{itemize}
+        \item Accel + mag
+        \begin{itemize}
+            \item Produces absolute measurement
+            \item Corrupted by common disturbances
+        \end{itemize}
+        \item Gyro
+        \begin{itemize}
+            \item Produces relative measurement
+            \item Needs initial orientation
+            \item Drifts over time
+        \end{itemize}
+        \item Sensor fusion algorithsm: complementary, Kalman, Madgwick, Mahony filters
+        \begin{itemize}
+            \item At basic, initializes attitude (manual or initial results of mag and accelerometer) and uses direction of mag field and gravity to slowly correct for drift in gyro
+        \end{itemize}
+    \end{itemize}
+    \item The degree to which to use accel+mag and gyro measurements: complementary filter is decided by yourself while for the Kalman filter, it is calculated for you (specify noise and how good system model is)
+    \item Accelerometer, gyroscope, barometer
+\end{itemize}
+
+\section{(09/12/2025)}
+\begin{itemize}
+    \item https://jlcpcb.com/parts/
+    \item https://componentsearchengine.com/
+    \item Download model, unzip, find kicad folder, and put it in working directory
+\end{itemize}
+
+\section{DPS 368 Modeling (17/01/2026)}
+\subsection{Workflow}
+\begin{itemize}
+    \item Read from 0x10 to 0x20 (COEF)
+    \item Write to 0x06 (PRS\_CFG)
+    \item Write to 0x07 (TMP\_CFG)
+    \item Write to 0x09 (CFG\_REG)
+    \item Loop?
+    \begin{itemize}
+        \item Write 0x02 to 0x08 (PRS\_B0, TMP\_B2, TMP\_B1, TMP\_B0, PRS\_CFG, TMP\_CFG, MEAS\_CFG)
+        \item Read 0x03 to 0x05 (TMP\_B2, TMP\_B1, TMP\_B0)
+        \item Calculate Temperature
+        \item Write 0x01 to 0x08 (PRS\_B1, PRS\_B0, TMP\_B2, TMP\_B1, TMP\_B0, PRS\_CFG, TMP\_CFG, MEAS\_CFG)
+        \item Read 0x00 to 0x02 (PRS\_B2, PRS\_B1, PRS\_B0)
+        \item Calculate Pressure
+    \end{itemize}
+    \item End
+\end{itemize}
+\subsection{General Notes}
+\begin{itemize}
+    \item Oversampling
+    \begin{itemize}
+        \item Takes multiple raw pressure measurements
+        \item Averages (or digitally filters) them
+        \item Outputs a single pressure value with lower noise and higher effective resolution
+        \item Set oversampling rate through TMP\_PRC[2:0] (temperature) and PRS\_PRC[3:0] (pressure)
+    \end{itemize}
+    \item FIFO
+    \begin{itemize}
+        \item Stores up to 32 pressure or temperature measurements.
+        \item Measurement time depends on oversampling rate (27.6 ms for standard mode 16x)
+        \item Read the pressure calibration coefficients (c00, c10, c20, c30, c01, c11, and c21) from the Calibration Coefficient register
+        \item Choose scaling factors kT (for temperature) and kP (for pressure) based on the chosen precision rate
+        \item Read the pressure and temperature result from the registers or FIFO
+        \item $T_{\text{raw\_sc}}=\frac{T_{\text{raw}}}{kT}$
+    \end{itemize}
+    \item Compensated scale factors are calculated based on the oversampling rate
+    \item How to calculate compensated temperature values
+    \begin{itemize}
+        \item Read the temperature calibration coefficients ( c0 and c1 ) from the Calibration Coefficients (COEF) register
+        \item Choose scaling factors kT (for temperature) based on the chosen precision rate
+        \item Read the temperature result from the temperature register or FIFO
+        \item Calculate scaled measurement results: $T_{\text{raw\_sc}}=\frac{T_{\text{raw}}}{kT}$
+        \item Calculate compensated measurement results: $T_{\text{comp}} = (c0)0.5 + (c1)(T_{\text{raw\_sc}})$
+    \end{itemize}
+    \item How to calculate compensated pressure values
+    \begin{itemize}
+        \item Read the pressure calibration coefficients (c00, c10, c20, c30, c01, c11, and c21) from the Calibration Coefficient register
+        \item Choose scaling factors kT (for temperature) and kP (for pressure) based on the chosen precision rate
+        \item Read the pressure and temperature result from the registers or FIFO
+        \item Calculate scaled measurement results:
+        \begin{flalign*}
+        T_{\text{raw\_sc}}=\frac{T_{\text{raw}}}{kT} \\
+        T_{\text{raw\_sc}}=\frac{T_{\text{raw}}}{kT} \\
+        \end{flalign*}
+        \item Calculate compensated measurement results: $T_{\text{comp}} = (c0)0.5 + (c1)(T_{\text{raw\_sc}})$
+    \end{itemize}
+    \item Barometric pressure (with temperature gradient)
+    \begin{itemize}
+        \item $P(h)$: pressure at 
+        \item $P_b$: reference pressure
+        \item $T_{M,b}$: reference temperature
+        \item $L_{M,b}$: temperature gradient
+        \item $H$: current height
+        \item $H_b$: reference height
+        \item $R^*$: universal gas constant
+        \item $M_0$: mean molar mass of air at sea level
+        \item $g_0'$: gravitational acceleration
+        \begin{align*}
+            P(H) &= P_b \cdot \left[\frac{T_{M,b}}{T_{M,b} + L_{M,b} \cdot (H-H_b)}\right]^{\frac{g_0' \cdot M_0}{R^* \cdot L_{M,b}}} \\
+            H &= \frac{T_{M,b}}{L_{M,b}} \left[ \left(\frac{P(H)}{P_b}\right)^{-\frac{R^* \cdot L_{M,b}}{g_0' \cdot M_0}} - 1 \right] + H_b
+        \end{align*}
+    \end{itemize}
+    \item Discrete-Time Gauss-Markov Drift Model
+    \begin{itemize}
+        \item $\omega_k \sim \mathcal{N}(0,q)$: process noise
+        \item $\tau$: correlation time
+        \begin{align*}
+            b_{k+1} &= \phi b_k + \omega_k \\
+            \phi &= e^{-\Delta t/ \tau}
+        \end{align*}
+    \end{itemize}
+\end{itemize}
+
+\end{document}
+
